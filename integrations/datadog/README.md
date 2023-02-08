@@ -46,7 +46,7 @@ Datadog's OpenMetrics integration can consume from the Prometheus SQL Exporter e
 4. Start the demo:
 
     ```bash
-    docker-compose up -d
+    docker-compose up
     ```
 
 5. Open your Datadog account and explore the `materialize.*` metrics.
@@ -106,6 +106,65 @@ queries:
 ## Datadog's OpenMetrics integration
 
 Datadog's agent will pick up the `/conf.d/openmetrics.yaml` configuration file to consume the metrics available in the Prometheus SQL Exporter endpoint.
+
+
+## Sources monitoring and alerting (Optional)
+
+Sources can fail or become stale in diverse circumstances, due to connection issues or schema modifications. Most of the time it happens unintentionally and goes unnoticed for hours. Let's build a bolder operation over sources by monitoring and alerting using Datadog.
+
+The idea is that when a source has a `stalled` or `failed` status, Datadog will respectively send an email warning or alert:
+
+<details>
+<summary>Steps</summary>
+
+  1. Add a new query to the `config.yaml` to retrieve sources' statuses
+  ```yaml
+    - name: "source_statuses"
+      help: "Source's statuses"
+      values:
+        - "status"
+      labels:
+        - "name"
+        - "type"
+      query:  |
+              SELECT
+                name,
+                type,
+                case
+                  when status = 'failed' then 2
+                  when status = 'stalled' then 1
+                  else 0
+                end as status
+              FROM mz_internal.mz_source_statuses;
+  ```
+  2. Re-run `docker-compose` to load the new config.
+  ```bash
+      docker-compose up
+  ```
+  3. In Datadog, create a new [Metric Monitor](https://docs.datadoghq.com/monitors/types/metric/?tab=threshold).
+     1. Choose **Threshold Alert** as the detection method.
+     2. Define a unique metric as follows:
+        1. Query `materialize.sql_source_statuses`
+        2. From: `col:status`
+        3. Avg by: `type` and `name`
+     3. For the alert conditions:
+        1. Pick `above or equal to` for measuring the threshold.
+        2. Set the **Alert threshold** to `>= 2`
+        3. Set the **Warning threshold** to `>= 1`
+     4. Edit the alert message:
+        ```
+        {{#is_alert}}
+            Alert: The source is failing. Check the status in Materialize.
+        {{/is_alert}}
+
+        {{#is_warning}}
+            Warning: The source is stalled. Check the status in Materialize.
+        {{/is_warning}} @your@email.com
+        ```
+     5. Click on **Test notifications** and assert the notification in your email.
+     6. Click **Create**.
+
+</details>
 
 ## Helpful links
 
