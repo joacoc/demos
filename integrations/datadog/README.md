@@ -108,16 +108,14 @@ queries:
 Datadog's agent will pick up the `/conf.d/openmetrics.yaml` configuration file to consume the metrics available in the Prometheus SQL Exporter endpoint.
 
 
-## Sources monitoring and alerting (Optional)
+## Monitoring and alerting sources statuses (Optional)
 
-Sources can fail or become stale in diverse circumstances, due to connection issues or schema modifications. Most of the time it happens unintentionally and goes unnoticed for hours. Let's build a bolder operation over sources by monitoring and alerting using Datadog.
-
-The idea is that when a source has a `stalled` or `failed` status, Datadog will respectively send an email warning or alert:
+Sources can fail or become stale in diverse circumstances, like connection issues or schema modifications. Most of the time it happens unintentionally and goes unnoticed for hours. Let's build bolder observability over sources by monitoring and alerting using the current stack.
 
 <details>
-<summary>Steps</summary>
+<summary><b>Click for the Steps</b></summary>
 
-  1. Add a new query to the `config.yaml` to retrieve sources' statuses
+  1. Edit `config.yaml` and add a new query:
   ```yaml
     - name: "source_statuses"
       help: "Source's statuses"
@@ -137,32 +135,41 @@ The idea is that when a source has a `stalled` or `failed` status, Datadog will 
                 end as status
               FROM mz_internal.mz_source_statuses;
   ```
-  2. Re-run `docker-compose` to load the new config.
+  1. Re-run `docker-compose` to load the new config.
   ```bash
       docker-compose up
   ```
-  3. In Datadog, create a new [Metric Monitor](https://docs.datadoghq.com/monitors/types/metric/?tab=threshold).
-     1. Choose **Threshold Alert** as the detection method.
-     2. Define a unique metric as follows:
-        1. Query `materialize.sql_source_statuses`
-        2. From: `col:status`
-        3. Avg by: `type` and `name`
-     3. For the alert conditions:
-        1. Pick `above or equal to` for measuring the threshold.
-        2. Set the **Alert threshold** to `>= 2`
-        3. Set the **Warning threshold** to `>= 1`
-     4. Edit the alert message:
-        ```
-        {{#is_alert}}
-            Alert: The source is failing. Check the status in Materialize.
-        {{/is_alert}}
-
-        {{#is_warning}}
-            Warning: The source is stalled. Check the status in Materialize.
-        {{/is_warning}} @your@email.com
-        ```
-     5. Click on **Test notifications** and assert the notification in your email.
-     6. Click **Create**.
+  1. In **Datadog**, create a new [Metric Monitor](https://app.datadoghq.com/monitors/create).
+  2. Select **Import JSON from an exported monitor**
+  3. Paste the following JSON:
+  ```json
+    {
+        "id": 110203586,
+        "name": "Monitor sources' statuses",
+        "type": "query alert",
+        "query": "sum(last_5m):sum:materialize.sql_source_statuses{col:status} by {type,name} >= 2",
+        "message": "{{#is_alert}}\n  Alert: A source is failing.\n{{/is_alert}} \n\n{{#is_warning}}\n  Warning: A source is stalled.\n{{/is_warning}} @your@email.com @all",
+        "tags": [],
+        "options": {
+            "thresholds": {
+                "critical": 2,
+                "warning": 1
+            },
+            "notify_audit": false,
+            "require_full_window": false,
+            "notify_no_data": false,
+            "renotify_interval": 0,
+            "include_tags": true,
+            "new_group_delay": 60,
+            "silenced": {}
+        },
+        "priority": 1,
+        "restricted_roles": []
+    }
+  ```
+  4. In the **Notify your team** section, replace `your@email.com`.
+  5. Click **Test notifications** and check you receive an email.
+  6. Click **Create**.
 
 </details>
 
